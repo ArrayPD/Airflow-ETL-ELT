@@ -1,0 +1,7 @@
+apache-airflow
+pandas
+numpy
+scikit-learn
+duckdb
+adbc-driver-postgresql
+matplotlib
