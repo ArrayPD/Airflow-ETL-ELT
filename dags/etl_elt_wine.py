@@ -357,27 +357,43 @@ def etl_elt_wine():
 
 
         @task
-        def train_model_task(data: tuple, model_index: int) -> dict:
+        def train_model_task(
+            data: tuple,
+            model_index: int,
+            mlflow_tracking_uri: str,
+            artifact_location: str,
+            experiment_name: str
+        ) -> dict:
             """
-            Train ML model.
+            Train ML model with MLflow.
             Args:
                 data (tuple): X_train, X_test, y_train, y_test.
                 model_index (int): Index of selected model from
                     predefined model list.
+                mlflow_tracking_uri (str): URI of MLflow tracking server.
+                artifact_location (str): The location to store run artifacts.
+                experiment_name (str): Name of experiment.
             Returns:
                 A dict including model info. For example, a
                 LinearRegression pipeline's result looks like
-                    {"model_name": "lr",
-                     "model_pipe": str(lr_pipe),
-                     "model_params": lr_param_grid,
-                     "r2_train": r2_train,
-                     "r2_test": r2_test
-                    }
+                {
+                "model_name": "lr",
+                "model_pipe": str(lr_pipe),
+                "model_params": lr_params,
+                "r2_train": r2_train,
+                "r2_test": r2_test,
+                "experiment_id": experiment_id,
+                "experiment_name": experiment_name,
+                "artifact_location": artifact_location,
+                "model_uri": model_uri,
+                "experiment_url": experiment_url,
+                "run_url": run_url
+                }
             """
             from include.utils import train_model
 
             logger.info("Model training process start.")
-            result = train_model(data=data, model_index=model_index)
+            result = train_model(data=data, model_index=model_index, mlflow_tracking_uri=mlflow_tracking_uri, artifact_location=artifact_location, experiment_name=experiment_name)
             logger.info("Model training process finished.")
 
             return result
@@ -385,7 +401,7 @@ def etl_elt_wine():
 
         task1 = data_preprocess_task()
         task2 = choose_model_task()
-        task3 = train_model_task.partial(data=task1).expand(model_index=task2)
+        task3 = train_model_task.partial(data=task1, mlflow_tracking_uri=_MLFLOW_TRACKING_URI, artifact_location=_ARTIFACT_LOCATION, experiment_name=_EXPERIMENT_NAME).expand(model_index=task2)
 
 
     @task
