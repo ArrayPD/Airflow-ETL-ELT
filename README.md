@@ -144,6 +144,7 @@ This project stands on the shoulders of giants:
 * pandas
 * numpy
 * scikit-learn
+* mlflow
 * duckdb
 * postgresql
 * adbc-driver-postgresql
@@ -156,6 +157,16 @@ This project stands on the shoulders of giants:
 
 ### [Run the DAGs](#Table-of-Contents)
 
+Start MLflow Tracking Server by command.
+```shell
+mlflow server --host 127.0.0.1 --port 5000
+```
+Then access MLflow UI at `localhost:5000`.
+
+Start Airflow by command.
+```shell
+airflow standalone
+```
 After Airflow has started. Access the Airflow UI at `localhost:8080`.
 Filter DAGs by tag `wine_quality`.
 
@@ -205,6 +216,10 @@ A success ETL_ELT_wine DAG run looks like:
 A success ETL_ELT_wine_downstream DAG run looks like:
 
 ![ETL ELT downstrem success](images/etl_elt_downstream_success.png)
+
+MLflow as a part of ETL_ELT_wine DAG run, looks like:
+
+![MLflow success](images/mlflow.png)
 
 ## [Project Structure](#Table-of-Contents)
 
