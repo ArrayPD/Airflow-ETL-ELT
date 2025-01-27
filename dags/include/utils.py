@@ -11,6 +11,8 @@ import logging
 import itertools
 import duckdb
 import matplotlib.pyplot as plt
+from pathlib import Path
+import mlflow
 
 
 logger = logging.getLogger("airflow.task")
@@ -142,13 +144,22 @@ def choose_model(model_list: list[dict]) -> list[int]:
     return ret
 
 
-def train_model(data: tuple, model_index: int) -> dict:
+def train_model(
+    data: tuple,
+    model_index: int,
+    mlflow_tracking_uri: str,
+    artifact_location: str,
+    experiment_name: str
+) -> dict:
     """
-    Train ML model.
+    Train ML model with MLflow.
     Args:
         data (tuple): X_train, X_test, y_train, y_test.
         model_index (int): Index of selected model from
             predefined model list.
+        mlflow_tracking_uri (str): URI of MLflow tracking server.
+        artifact_location (str): The location to store run artifacts.
+        experiment_name (str): Name of experiment.
     Returns:
         A dict including model info. For example, a
         LinearRegression pipeline's result looks like
@@ -157,40 +168,86 @@ def train_model(data: tuple, model_index: int) -> dict:
         "model_pipe": str(lr_pipe),
         "model_params": lr_params,
         "r2_train": r2_train,
-        "r2_test": r2_test
+        "r2_test": r2_test,
+        "experiment_id": experiment_id,
+        "experiment_name": experiment_name,
+        "artifact_location": artifact_location,
+        "model_uri": model_uri,
+        "experiment_url": experiment_url,
+        "run_url": run_url
         }
     """
-    logger.info("Extract train and test data.")
-    X_train, X_test, y_train, y_test = data
-    y_train = y_train.to_numpy().ravel()
-    y_test = y_test.to_numpy().ravel()
+    # Set mlflow_tracking_uri
+    mlflow.set_tracking_uri(uri=mlflow_tracking_uri)
 
-    logger.info("Extract model info.")
-    model_list = build_model()
-    model_dict = model_list[model_index]
+    if not os.path.exists(artifact_location):
+        os.mkdir(artifact_location)
 
-    model_name = model_dict["model_name"]
-    logger.info(f"Model name: {model_name}")
-    model_pipe = model_dict["model_pipe"]
-    logger.info(f"Model pipeline: {model_pipe}")
-    model_params = model_dict["model_params"]
-    logger.info(f"Model parameters: {model_params}")
+    # Create and/or set experiment
+    client = mlflow.MlflowClient()
+    filter_string=f"name = '{experiment_name}'"
+    experiments = client.search_experiments(filter_string=filter_string)
+    if len(experiments) == 0:
+        experiment_id = client.create_experiment(
+            experiment_name,
+            artifact_location=Path(artifact_location).as_uri(),
+            tags={"version": "v1", "priority": "P1"},
+        )
+        experiment = client.get_experiment(experiment_id)
+        mlflow.set_experiment(experiment.name)
+    else:
+        experiment = client.get_experiment_by_name(experiment_name)
+        mlflow.set_experiment(experiment.name)
 
-    model_pipe.set_params(**model_params)
-    model_pipe.fit(X_train, y_train)
+    # Start an MLflow run
+    with mlflow.start_run() as run:
+        mlflow.autolog()
+        logger.info("Extract train and test data.")
+        X_train, X_test, y_train, y_test = data
+        y_train = y_train.to_numpy().ravel()
+        y_test = y_test.to_numpy().ravel()
 
-    y_pred_train = model_pipe.predict(X_train)
-    y_pred_test = model_pipe.predict(X_test)
+        logger.info("Extract model info.")
+        model_list = build_model()
+        model_dict = model_list[model_index]
 
-    r2_train = r2_score(y_train, y_pred_train)
-    r2_test = r2_score(y_test, y_pred_test)
+        model_name = model_dict["model_name"]
+        logger.info(f"Model name: {model_name}")
+        model_pipe = model_dict["model_pipe"]
+        logger.info(f"Model pipeline: {model_pipe}")
+        model_params = model_dict["model_params"]
+        logger.info(f"Model parameters: {model_params}")
 
-    logger.info(f"r2 train: {r2_train:.6f}")
-    model_dict["r2_train"] = np.round(r2_train, 6)
-    logger.info(f"r2 test: {r2_test:.6f}")
-    model_dict["r2_test"] = np.round(r2_test, 6)
+        model_pipe.set_params(**model_params)
+        model_pipe.fit(X_train, y_train)
 
-    model_dict["model_pipe"] = str(model_dict["model_pipe"])
+        y_pred_train = model_pipe.predict(X_train)
+        y_pred_test = model_pipe.predict(X_test)
+
+        r2_train = r2_score(y_train, y_pred_train)
+        r2_test = r2_score(y_test, y_pred_test)
+
+        logger.info(f"r2 train: {r2_train:.6f}")
+        model_dict["r2_train"] = np.round(r2_train, 6)
+        logger.info(f"r2 test: {r2_test:.6f}")
+        model_dict["r2_test"] = np.round(r2_test, 6)
+
+        # Set tags
+        mlflow.set_tag("Training Info", f"Basic {model_name} model for wine data.")
+        client.set_tag(run.info.run_id, "wine_tag", f"Predict alcohol index with {model_name}")
+
+        # Register model
+        model_uri = f"runs:/{run.info.run_id}/model"
+        mlflow.register_model(model_uri, f"wine-{model_name}")
+
+        experiment_url = f"{mlflow_tracking_uri}/#/experiments/{run.info.experiment_id}"
+        model_dict["experiment_id"] = experiment.experiment_id
+        model_dict["experiment_name"] = experiment.name
+        model_dict["artifact_location"] = experiment.artifact_location
+        model_dict["model_uri"] = model_uri
+        model_dict["experiment_url"] = experiment_url
+        model_dict["run_url"] = f"{experiment_url}/runs/{run.info.run_id}"
+        model_dict["model_pipe"] = str(model_dict["model_pipe"])
 
     return model_dict
 
@@ -246,7 +303,7 @@ def plot_kde(df, path, title="Alcohol KDE"):
         ha="left"
     )
 
-    # Save figure as a pdf file.
+    # Save figure as a pdf.
     if not os.path.exists(path):
         os.makedirs(path)
 
