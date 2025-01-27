@@ -58,6 +58,10 @@ _POSTGRESQL_TABLE_NAME = os.getenv("POSTGRESQL_TABLE_NAME", "wine_data")
 _POSTGRESQL_URI = f"postgresql://user:password@localhost:5432/{_POSTGRESQL_DB_NAME}"
 _PLOT_DIR = os.getenv("PLOT_DIR", f"{_PROJECT_DIR}/data/plot")
 
+_MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+_ARTIFACT_LOCATION = os.getenv("ARTIFACT_LOCATION", f"{_PROJECT_DIR}/data/mlruns")
+_EXPERIMENT_NAME = os.getenv("EXPERIMENT_NAME", "wine_quality")
+
 
 @dag(
     dag_id="ETL_ELT_wine",
@@ -72,7 +76,7 @@ _PLOT_DIR = os.getenv("PLOT_DIR", f"{_PROJECT_DIR}/data/plot")
         "retries": 3,
         "retry_delay": duration(seconds=30),
     },
-    tags=["ETL", "ELT", "ML", "XCom", "dataset", "dynamic_task", "wine_quality"],
+    tags=["ETL", "ELT", "ML", "XCom", "dataset", "dynamic_task", "mlflow", "wine_quality"],
     params={
         _HIGH_QUALITY_THRESHOLD_PARAMETER_NAME: Param(
             7,
